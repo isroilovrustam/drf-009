@@ -2,7 +2,7 @@ asgiref==3.8.1
 Django==5.2
 djangorestframework==3.16.0
 drf-yasg==1.21.10
-environs==8.0.0
+environs==14.1.1
 inflection==0.5.1
 marshmallow==3.26.1
 packaging==24.2
