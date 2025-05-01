@@ -1,7 +1,9 @@
+from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
+from django.core.validators import FileExtensionValidator
 from rest_framework import serializers
-from shared.utiliy import check_email_or_phone, send_email
-from .models import User, UserConfirmation, VIA_EMAIL, VIA_PHONE, CODE_VERIFIED, DONE
+from shared.utiliy import check_email_or_phone, send_email, check_user_type
+from .models import User, UserConfirmation, VIA_EMAIL, VIA_PHONE, CODE_VERIFIED, DONE, PHOTO_DONE, NEW
 
 
 class SignUpSerializer(serializers.ModelSerializer):
@@ -124,3 +126,80 @@ class ChangeUserInformationSerializer(serializers.Serializer):
         instance.save()
         return instance
 
+
+class ChangeUserPhotoSerializer(serializers.Serializer):
+    photo = serializers.ImageField(
+        validators=[FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'png', 'heic', 'heif'])])
+
+    def update(self, instance, validated_data):
+        photo = validated_data.get('photo')
+        if photo:
+            instance.phone = photo
+            instance.auth_status = PHOTO_DONE
+            instance.save()
+        return instance
+
+
+class LoginSerializer(serializers.Serializer):
+    def __init__(self, *args, **kwargs):
+        super(LoginSerializer, self).__init__(*args, **kwargs)
+        self.fields['userinput'] = serializers.CharField(required=True)
+        self.fields['username'] = serializers.CharField(required=False, read_only=True)
+
+
+
+    def auth_validate(self, data):
+        user_input = data.get('userinput', None)  # email, phote, username
+        if check_user_type(user_input) == "email":
+            user = self.get_user(email__iexact=user_input)
+            username = user.username
+        elif check_user_type(user_input) == "phone":
+            user = self.get_user(photo_number=user_input)
+            username = user.username
+        elif check_user_type(user_input) == "username":
+            username = user_input
+        else:
+            data = {
+                "success": False,
+                "message": "Siz username, email, phone yuborishingiz kerak"
+            }
+            raise serializers.ValidationError(data)
+
+        authentication_kwargs = {
+            self.username_field: username,
+            'password': data.get('password')
+        }
+        current_user = User.objects.filter(username__iexact=username).first()
+        if current_user is not None and current_user.auth_status in [NEW, CODE_VERIFIED]:
+            raise serializers.ValidationError({
+                "success": False,
+                "message": "Siz to'liq ro'yxatdan o'tmagansiz"
+            })
+
+        user = authenticate(**authentication_kwargs)
+        if user is None:
+            self.user = user
+        else:
+            raise serializers.ValidationError({
+                "success": False,
+                "message": "Logini yoki passwordni tekshirib qayta kiriting?"
+            })
+
+    def validate(self, data):
+        self.auth_validate(data)
+        if self.user.auth_status in [DONE, PHOTO_DONE]:
+            raise serializers.ValidationError({"Siz login qilaolmaysiz "})
+        data = self.user.token()
+        data['auth_status'] = self.user.auth_status
+        data["full_name"] = self.user.full_name
+        return data
+
+    def get_user(self, **kwargs):
+        users = User.objects.filter(**kwargs)
+        if not users.exists():
+            raise serializers.ValidationError({
+                "success": False,
+                "message": "User not found"
+            })
+
+        return users.first()

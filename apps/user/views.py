@@ -4,9 +4,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.utils import timezone
 from rest_framework.serializers import ValidationError
+from yaml import serialize
 
 from shared.utiliy import send_email
-from .serializers import SignUpSerializer, ChangeUserInformationSerializer
+from .serializers import SignUpSerializer, ChangeUserInformationSerializer, ChangeUserPhotoSerializer, LoginSerializer
 from .models import User, NEW, CODE_VERIFIED, VIA_EMAIL, VIA_PHONE
 from rest_framework import generics, permissions, status
 
@@ -105,3 +106,23 @@ class ChangeUserInformationAPIView(UpdateAPIView):
             "auth_status": self.request.user.auth_status,
         }
         return Response(data, status=status.HTTP_200_OK)
+
+
+class ChangeUserPhotoAPIView(APIView):
+    permission_classes = (IsAuthenticated, )
+
+    def put(self,request, *args, **kwargs):
+        serializer=ChangeUserPhotoSerializer(data=request.data)
+        if serializer.is_valid():
+            user = request.user
+            serializer.update(user, serializer.validated_data)
+            data = {
+                "success": True,
+                "message": "Malumotlar qabul qilindi rasm joylandi",
+            }
+            return Response(data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class LoginView(APIView):
+    serializer_class = LoginSerializer
